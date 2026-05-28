@@ -5,26 +5,26 @@
 
 @layer base {
   :root {
-    --background: 227 33% 97%; /* #F5F6FA - Ice Blue */
+    --background: 240 33% 99%;
     --foreground: 224 71% 4%;
     --card: 0 0% 100%;
     --card-foreground: 224 71% 4%;
     --popover: 0 0% 100%;
     --popover-foreground: 224 71% 4%;
-    --primary: 229 79% 54%; /* #2D50E6 - Ultramarine Blue */
+    --primary: 262 83% 58%; /* Vibrant Purple */
     --primary-foreground: 210 40% 98%;
-    --secondary: 220 14% 96%;
-    --secondary-foreground: 229 79% 54%;
+    --secondary: 262 10% 96%;
+    --secondary-foreground: 262 83% 58%;
     --muted: 220 14% 96%;
     --muted-foreground: 220 8% 46%;
-    --accent: 198 85% 47%; /* #12A1DE - Cyan */
+    --accent: 322 81% 55%; /* Vibrant Pink */
     --accent-foreground: 210 40% 98%;
     --destructive: 0 84.2% 60.2%;
     --destructive-foreground: 210 40% 98%;
     --border: 220 13% 91%;
     --input: 220 13% 91%;
-    --ring: 229 79% 54%;
-    --radius: 0.75rem;
+    --ring: 262 83% 58%;
+    --radius: 1rem;
   }
   .dark {
     --background: 224 71% 4%;
@@ -33,19 +33,19 @@
     --card-foreground: 210 40% 98%;
     --popover: 224 71% 4%;
     --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
-    --primary-foreground: 222 47% 11%;
+    --primary: 262 83% 58%;
+    --primary-foreground: 210 40% 98%;
     --secondary: 217 32% 17%;
     --secondary-foreground: 210 40% 98%;
     --muted: 217 32% 17%;
     --muted-foreground: 215 20% 65%;
-    --accent: 217 32% 17%;
+    --accent: 322 81% 55%;
     --accent-foreground: 210 40% 98%;
     --destructive: 0 62.8% 30.6%;
     --destructive-foreground: 210 40% 98%;
     --border: 217 32% 17%;
     --input: 217 32% 17%;
-    --ring: 224 76% 48%;
+    --ring: 262 83% 58%;
   }
 }
 
@@ -61,15 +61,15 @@
   }
 }
 
-.radial-progress-container {
-  position: relative;
-  display: inline-flex;
+.gradient-bg {
+  background: radial-gradient(circle at top left, hsla(262, 83%, 58%, 0.08), transparent),
+              radial-gradient(circle at bottom right, hsla(322, 81%, 55%, 0.08), transparent);
 }
 
 .animate-in-stagger > * {
   opacity: 0;
-  transform: translateY(10px);
-  animation: slideUp 0.5s ease forwards;
+  transform: translateY(15px);
+  animation: slideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
 }
 
 .animate-in-stagger > *:nth-child(1) { animation-delay: 0.1s; }
@@ -83,4 +83,12 @@
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+.card-vibrant {
+  @apply transition-all duration-300 hover:shadow-2xl hover:shadow-primary/10 hover:-translate-y-1;
+}
+
+.glass-morphism {
+  @apply bg-white/70 backdrop-blur-xl border-white/20;
 }

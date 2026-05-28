@@ -18,8 +18,10 @@ import {
   Zap,
   TrendingUp,
   Target,
-  ClipboardType,
-  ArrowRight
+  ArrowRight,
+  FileSearch,
+  Layers,
+  Award
 } from "lucide-react";
 import { analyzeKeywords, calculateATSScore, KeywordAnalysis } from '@/lib/nlp-engine';
 import { ScoreGauge } from '@/components/ScoreGauge';
@@ -27,11 +29,13 @@ import { KeywordBadge } from '@/components/KeywordBadge';
 import { analyzeResumeSkillGaps, AnalyzeResumeSkillGapsOutput } from '@/ai/flows/analyze-resume-skill-gaps-flow';
 import { analyzeResumeComprehensive, ComprehensiveAnalysisOutput } from '@/ai/flows/comprehensive-ats-analysis-flow';
 import { useToast } from "@/hooks/use-toast";
+import { parseFileAction } from '@/app/actions/parse-file';
 
 export default function ResumeRefinePage() {
   const [resumeText, setResumeText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isParsing, setIsParsing] = useState(false);
   const [resumeSource, setResumeSource] = useState<'upload' | 'paste'>('upload');
   const [fileName, setFileName] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -44,25 +48,41 @@ export default function ResumeRefinePage() {
     aiGaps?: AnalyzeResumeSkillGapsOutput;
   } | null>(null);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.type !== "text/plain" && !file.name.endsWith('.txt')) {
+      setFileName(file.name);
+      setIsParsing(true);
+      
+      const formData = new FormData();
+      formData.append('file', file);
+
+      try {
+        const result = await parseFileAction(formData);
+        if (result.error) {
+          toast({
+            variant: "destructive",
+            title: "File Error",
+            description: result.error,
+          });
+          setFileName(null);
+        } else {
+          setResumeText(result.text);
+          toast({
+            title: "File Processed",
+            description: `${file.name} successfully analyzed.`,
+          });
+        }
+      } catch (err) {
         toast({
           variant: "destructive",
-          title: "Format not supported yet",
-          description: "For the most accurate AI analysis, please upload a .txt file or use the 'Paste Text' option for PDF/DOCX content.",
+          title: "Parsing Failed",
+          description: "Could not extract text from the document.",
         });
-        return;
+        setFileName(null);
+      } finally {
+        setIsParsing(false);
       }
-
-      setFileName(file.name);
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const text = event.target?.result as string;
-        setResumeText(text);
-      };
-      reader.readAsText(file);
     }
   };
 
@@ -86,7 +106,6 @@ export default function ResumeRefinePage() {
 
     setIsAnalyzing(true);
     try {
-      // 1. Local NLP Analysis (Immediate fallback/secondary metrics)
       const nlpResults = analyzeKeywords(resumeText, jobDescription);
       const localScore = calculateATSScore(resumeText, nlpResults);
       
@@ -95,7 +114,6 @@ export default function ResumeRefinePage() {
         localAtsScore: localScore
       });
 
-      // 2. Comprehensive AI Analysis (The "Effective" check)
       const [aiComprehensive, gaps] = await Promise.all([
         analyzeResumeComprehensive({ resumeText, jobDescription }),
         analyzeResumeSkillGaps({ resumeText, jobDescriptionText: jobDescription })
@@ -129,160 +147,180 @@ export default function ResumeRefinePage() {
   const finalScore = analysisResults?.aiAnalysis?.score ?? analysisResults?.localAtsScore ?? 0;
 
   return (
-    <div className="flex flex-col min-h-screen">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
-        <div className="container flex h-16 items-center justify-between px-4">
+    <div className="flex flex-col min-h-screen gradient-bg">
+      <header className="sticky top-0 z-50 w-full glass-morphism border-b">
+        <div className="container flex h-16 items-center justify-between px-6 mx-auto">
           <div className="flex items-center gap-2">
-            <div className="bg-primary p-1.5 rounded-lg">
-              <Sparkles className="h-5 w-5 text-primary-foreground" />
+            <div className="bg-gradient-to-br from-primary to-accent p-2 rounded-xl shadow-lg shadow-primary/20">
+              <Sparkles className="h-5 w-5 text-white" />
             </div>
-            <h1 className="text-xl font-headline font-bold text-primary tracking-tight">ResumeRefine</h1>
+            <h1 className="text-2xl font-headline font-black text-primary tracking-tighter">ResumeRefine</h1>
           </div>
-          <div className="flex items-center gap-4">
-            <Button variant="ghost" size="sm" className="hidden sm:flex">How it works</Button>
-            <Button size="sm" className="rounded-full shadow-lg shadow-primary/20">Go Pro</Button>
+          <div className="flex items-center gap-6">
+            <Button variant="ghost" size="sm" className="hidden sm:flex font-bold hover:text-primary">Features</Button>
+            <Button size="sm" className="rounded-full bg-primary hover:bg-primary/90 shadow-xl shadow-primary/25 px-6 font-bold">Go Pro</Button>
           </div>
         </div>
       </header>
 
-      <main className="flex-1 bg-background flex flex-col">
+      <main className="flex-1 flex flex-col">
         {!analysisResults ? (
-          <div className="container flex-1 flex items-center justify-center p-4 py-12">
-            <div className="max-w-6xl w-full grid grid-cols-1 lg:grid-cols-2 gap-12 items-start animate-in-stagger">
-              <div className="space-y-8">
-                <Badge variant="secondary" className="px-3 py-1 font-semibold text-primary bg-primary/10 border-primary/20">
-                  Free AI ATS Checker
-                </Badge>
+          <div className="container flex-1 flex items-center justify-center p-6 py-16 mx-auto">
+            <div className="max-w-7xl w-full grid grid-cols-1 lg:grid-cols-2 gap-16 items-center animate-in-stagger">
+              <div className="space-y-10">
                 <div className="space-y-4">
-                  <h2 className="text-5xl md:text-6xl font-headline font-bold tracking-tight text-foreground leading-[1.05]">
-                    See your resume like a <span className="text-primary italic">Recruiter</span>.
+                  <Badge variant="secondary" className="px-4 py-1.5 font-black text-primary bg-primary/10 border-primary/20 rounded-full animate-pulse">
+                    V3.0 AI ENGINE ACTIVE
+                  </Badge>
+                  <h2 className="text-6xl md:text-7xl font-headline font-black tracking-tighter text-foreground leading-[0.95]">
+                    Optimize your <br/>
+                    <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-purple-500 to-accent">Career Path</span>.
                   </h2>
-                  <p className="text-xl text-muted-foreground leading-relaxed max-w-lg">
-                    Get an instant ATS score based on semantic AI analysis. No account required.
+                  <p className="text-xl text-muted-foreground leading-relaxed max-w-xl font-medium">
+                    Upload your PDF, Word, or text file to get a deep semantic ATS analysis powered by Gemini 2.5 Flash.
                   </p>
                 </div>
                 
-                <div className="space-y-4 pt-4">
-                  <div className="flex items-center gap-3">
-                    <div className="bg-green-100 p-2 rounded-full text-green-600"><CheckCircle className="h-4 w-4" /></div>
-                    <span className="text-base font-medium">98% Accuracy vs Industry ATS</span>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                  <div className="flex items-center gap-4 bg-white/50 p-4 rounded-2xl border border-white/20 shadow-sm">
+                    <div className="bg-green-500/10 p-3 rounded-xl text-green-600 shadow-inner"><CheckCircle className="h-6 w-6" /></div>
+                    <span className="text-base font-bold text-slate-700 leading-tight">High-Accuracy <br/>Parsing</span>
                   </div>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-blue-100 p-2 rounded-full text-blue-600"><Target className="h-4 w-4" /></div>
-                    <span className="text-base font-medium">Deep Semantic Skill Gap Analysis</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <div className="bg-purple-100 p-2 rounded-full text-purple-600"><Zap className="h-4 w-4" /></div>
-                    <span className="text-base font-medium">Immediate Actionable Improvements</span>
+                  <div className="flex items-center gap-4 bg-white/50 p-4 rounded-2xl border border-white/20 shadow-sm">
+                    <div className="bg-accent/10 p-3 rounded-xl text-accent shadow-inner"><Zap className="h-6 w-6" /></div>
+                    <span className="text-base font-bold text-slate-700 leading-tight">Instant AI <br/>Feedback</span>
                   </div>
                 </div>
 
-                <div className="pt-6">
-                  <div className="flex items-center justify-between mb-3">
-                    <label className="text-sm font-bold text-foreground uppercase tracking-wider">Step 1: The Job</label>
+                <div className="pt-4">
+                  <div className="flex items-center justify-between mb-4">
+                    <label className="text-xs font-black text-primary uppercase tracking-[0.2em]">01. Target Role Requirement</label>
                   </div>
                   <Textarea 
-                    placeholder="Paste the Job Description here..."
-                    className="min-h-[180px] text-base resize-none bg-white shadow-sm border-slate-200 focus:border-primary transition-all rounded-2xl p-6"
+                    placeholder="Paste the Job Description here to analyze compatibility..."
+                    className="min-h-[200px] text-lg resize-none bg-white/80 glass-morphism shadow-2xl shadow-slate-200 border-none focus-visible:ring-2 focus-visible:ring-primary rounded-3xl p-8 transition-all"
                     value={jobDescription}
                     onChange={(e) => setJobDescription(e.target.value)}
                   />
                 </div>
               </div>
 
-              <Card className="border-none bg-slate-100/30 p-2">
-                <div className="bg-white rounded-[2.5rem] p-8 md:p-10 shadow-2xl shadow-slate-200 border border-slate-100 h-full flex flex-col">
-                  <div className="flex items-center justify-between mb-8">
-                    <label className="text-sm font-bold text-foreground uppercase tracking-wider">Step 2: Your Resume</label>
-                    <div className="flex bg-slate-100 p-1 rounded-full">
+              <Card className="border-none bg-gradient-to-br from-primary/5 to-accent/5 p-4 rounded-[3.5rem] shadow-2xl shadow-primary/5">
+                <div className="bg-white rounded-[3rem] p-10 md:p-14 shadow-2xl shadow-slate-200 border border-white h-full flex flex-col relative overflow-hidden">
+                  <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -mr-16 -mt-16 blur-3xl"></div>
+                  
+                  <div className="flex items-center justify-between mb-10">
+                    <label className="text-xs font-black text-primary uppercase tracking-[0.2em]">02. Your Resume</label>
+                    <div className="flex bg-slate-100/50 p-1.5 rounded-full border border-slate-200/50">
                       <Button 
                         variant={resumeSource === 'upload' ? 'default' : 'ghost'} 
                         size="sm" 
-                        className="rounded-full h-8 px-4 text-xs font-bold"
+                        className={`rounded-full h-9 px-6 text-xs font-black transition-all ${resumeSource === 'upload' ? 'bg-primary shadow-lg shadow-primary/30' : ''}`}
                         onClick={() => setResumeSource('upload')}
                       >
-                        File
+                        DOCUMENT
                       </Button>
                       <Button 
                         variant={resumeSource === 'paste' ? 'default' : 'ghost'} 
                         size="sm" 
-                        className="rounded-full h-8 px-4 text-xs font-bold"
+                        className={`rounded-full h-9 px-6 text-xs font-black transition-all ${resumeSource === 'paste' ? 'bg-primary shadow-lg shadow-primary/30' : ''}`}
                         onClick={() => setResumeSource('paste')}
                       >
-                        Paste
+                        PASTE TEXT
                       </Button>
                     </div>
                   </div>
 
-                  <div className="flex-1 flex flex-col justify-center min-h-[300px]">
+                  <div className="flex-1 flex flex-col justify-center min-h-[340px]">
                     {resumeSource === 'upload' ? (
-                      <div className="border-2 border-dashed border-slate-200 rounded-3xl p-10 flex flex-col items-center justify-center text-center transition-all hover:border-primary/50 group bg-slate-50/50">
-                        <div className="bg-primary/10 p-5 rounded-full mb-6 group-hover:scale-110 transition-transform">
-                          <Upload className="h-10 w-10 text-primary" />
-                        </div>
-                        {fileName ? (
-                          <div className="space-y-2">
-                            <p className="text-lg font-bold text-slate-800">{fileName}</p>
-                            <Button variant="link" className="text-xs text-primary h-auto p-0" onClick={() => fileInputRef.current?.click()}>Change File</Button>
+                      <div 
+                        className={`border-3 border-dashed rounded-[2.5rem] p-12 flex flex-col items-center justify-center text-center transition-all group cursor-pointer relative ${isParsing ? 'border-primary/50 bg-primary/5' : 'border-slate-200 hover:border-primary/50 bg-slate-50/50 hover:bg-white'}`}
+                        onClick={() => !isParsing && fileInputRef.current?.click()}
+                      >
+                        {isParsing ? (
+                          <div className="space-y-6">
+                            <div className="relative">
+                              <RefreshCcw className="h-16 w-16 text-primary animate-spin" />
+                              <FileSearch className="h-8 w-8 text-accent absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2" />
+                            </div>
+                            <div>
+                              <p className="text-xl font-black text-primary">Reading Document...</p>
+                              <p className="text-sm text-muted-foreground font-medium">Extracting data for AI analysis</p>
+                            </div>
                           </div>
                         ) : (
                           <>
-                            <h3 className="text-xl font-headline font-bold mb-2">Upload Resume</h3>
-                            <p className="text-sm text-muted-foreground mb-8">
-                              Select a .txt file for analysis<br/>(PDF/DOCX support coming soon)
-                            </p>
+                            <div className="bg-gradient-to-br from-primary/10 to-accent/10 p-7 rounded-[2rem] mb-8 group-hover:scale-110 transition-transform duration-500 shadow-inner">
+                              <Upload className="h-12 w-12 text-primary" />
+                            </div>
+                            {fileName ? (
+                              <div className="space-y-3">
+                                <p className="text-2xl font-black text-slate-800 tracking-tight">{fileName}</p>
+                                <Badge variant="secondary" className="bg-green-100 text-green-700 border-green-200">READY FOR SCAN</Badge>
+                                <Button variant="link" className="text-xs text-primary font-bold h-auto p-0 pt-2">Change Document</Button>
+                              </div>
+                            ) : (
+                              <>
+                                <h3 className="text-2xl font-headline font-black mb-3 text-slate-800">Drop Resume Here</h3>
+                                <p className="text-base text-muted-foreground font-medium mb-10 max-w-xs mx-auto">
+                                  Supports PDF, DOCX, and TXT <br/> (Maximum accuracy)
+                                </p>
+                                <Button 
+                                  className="rounded-full px-10 h-14 bg-white text-primary border-2 border-primary hover:bg-primary hover:text-white font-black text-sm shadow-xl shadow-primary/10 transition-all active:scale-95"
+                                >
+                                  CHOOSE FILE
+                                </Button>
+                              </>
+                            )}
                           </>
                         )}
-                        
-                        <div className="relative">
-                          <Input 
-                            ref={fileInputRef}
-                            type="file" 
-                            className="hidden"
-                            onChange={handleFileUpload}
-                            accept=".txt"
-                          />
-                          {!fileName && (
-                            <Button 
-                              onClick={() => fileInputRef.current?.click()}
-                              className="rounded-full px-8 font-bold gap-2 shadow-md"
-                            >
-                              Choose File
-                            </Button>
-                          )}
-                        </div>
+                        <Input 
+                          ref={fileInputRef}
+                          type="file" 
+                          className="hidden"
+                          onChange={handleFileUpload}
+                          accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+                        />
                       </div>
                     ) : (
                       <Textarea 
-                        placeholder="Paste your full resume text here (Ctrl+V)..."
-                        className="flex-1 min-h-[300px] text-base resize-none bg-slate-50 border-slate-200 focus:border-primary transition-all rounded-3xl p-6"
+                        placeholder="Paste your resume text here for instant parsing..."
+                        className="flex-1 min-h-[340px] text-lg resize-none bg-slate-50/50 border-slate-200 focus-visible:ring-2 focus-visible:ring-primary rounded-[2.5rem] p-10 transition-all shadow-inner"
                         value={resumeText}
                         onChange={(e) => setResumeText(e.target.value)}
                       />
                     )}
                   </div>
 
-                  <div className="mt-10">
+                  <div className="mt-12">
                     <Button 
                       onClick={handleAnalyze} 
-                      disabled={isAnalyzing}
-                      className="w-full h-16 rounded-3xl bg-primary hover:bg-primary/90 text-white font-extrabold text-xl shadow-xl shadow-primary/30 group transition-all overflow-hidden relative"
+                      disabled={isAnalyzing || isParsing}
+                      className="w-full h-20 rounded-[2rem] bg-gradient-to-r from-primary to-accent hover:opacity-95 text-white font-black text-2xl shadow-2xl shadow-primary/30 group transition-all relative overflow-hidden active:scale-[0.98]"
                     >
                       {isAnalyzing ? (
-                        <span className="flex items-center gap-3">
-                          <RefreshCcw className="h-6 w-6 animate-spin" />
-                          Analyzing Skills...
+                        <span className="flex items-center gap-4">
+                          <RefreshCcw className="h-8 w-8 animate-spin" />
+                          RUNNING NEURAL SCAN...
                         </span>
                       ) : (
-                        <span className="flex items-center gap-3">
-                          <Zap className="h-6 w-6 fill-current group-hover:animate-pulse" />
-                          Calculate ATS Score
+                        <span className="flex items-center gap-4">
+                          <Award className="h-8 w-8 group-hover:rotate-12 transition-transform" />
+                          GET ATS REPORT
                         </span>
                       )}
+                      <div className="absolute inset-0 bg-white/20 opacity-0 group-hover:opacity-100 transition-opacity translate-x-[-100%] group-hover:translate-x-[100%] duration-1000 transform skew-x-[-20deg]"></div>
                     </Button>
-                    <p className="text-center text-[10px] text-muted-foreground mt-4 font-medium uppercase tracking-widest">
-                      Secure • Private • AI-Powered
-                    </p>
+                    <div className="flex items-center justify-center gap-6 mt-6 opacity-60">
+                      <div className="flex items-center gap-2">
+                        <Layers className="h-3 w-3 text-slate-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">Gemini 2.5 Flash</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Award className="h-3 w-3 text-slate-400" />
+                        <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">100% Privacy</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </Card>
@@ -291,84 +329,93 @@ export default function ResumeRefinePage() {
         ) : (
           <div className="flex-1 flex flex-col xl:flex-row overflow-hidden">
             {/* Resume Preview Sidebar */}
-            <div className="hidden xl:flex w-[320px] flex-col border-r bg-slate-50/50 backdrop-blur-sm">
-              <div className="p-6 border-b flex items-center justify-between bg-white/50">
-                <div className="flex items-center gap-2">
-                  <FileText className="h-4 w-4 text-slate-400" />
-                  <h3 className="font-headline font-bold text-xs uppercase tracking-wider text-slate-500">Document View</h3>
+            <div className="hidden xl:flex w-[380px] flex-col border-r glass-morphism">
+              <div className="p-8 border-b flex items-center justify-between bg-white/60">
+                <div className="flex items-center gap-3">
+                  <div className="bg-slate-100 p-2 rounded-lg">
+                    <FileText className="h-5 w-5 text-slate-500" />
+                  </div>
+                  <h3 className="font-headline font-black text-sm uppercase tracking-widest text-slate-600">Document Map</h3>
                 </div>
-                <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full" onClick={resetAnalysis}>
-                  <RefreshCcw className="h-4 w-4" />
+                <Button variant="ghost" size="icon" className="h-10 w-10 rounded-2xl hover:bg-slate-200" onClick={resetAnalysis}>
+                  <RefreshCcw className="h-5 w-5" />
                 </Button>
               </div>
-              <div className="flex-1 p-6 overflow-y-auto">
-                <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-[11px] leading-relaxed text-slate-500 whitespace-pre-wrap font-mono">
+              <div className="flex-1 p-8 overflow-y-auto">
+                <div className="bg-white p-8 rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 text-xs leading-relaxed text-slate-500 whitespace-pre-wrap font-mono relative overflow-hidden">
+                  <div className="absolute top-0 left-0 w-1 h-full bg-gradient-to-b from-primary to-accent"></div>
                   {resumeText}
                 </div>
               </div>
             </div>
 
             {/* Analysis Dashboard */}
-            <div className="flex-1 flex flex-col bg-white">
-              <div className="px-8 py-6 border-b flex items-center justify-between bg-white/80 backdrop-blur sticky top-0 z-10">
-                <div className="flex items-center gap-4">
-                  <Badge className="bg-green-500/10 text-green-600 border-green-500/20 px-3 py-1 font-bold">LIVE ANALYSIS</Badge>
-                  <h2 className="text-2xl font-headline font-bold tracking-tight">Optimization Dashboard</h2>
+            <div className="flex-1 flex flex-col bg-white/40 overflow-y-auto">
+              <div className="px-10 py-8 border-b flex items-center justify-between glass-morphism sticky top-0 z-20">
+                <div className="flex items-center gap-6">
+                  <div className="flex h-12 w-12 rounded-2xl bg-gradient-to-br from-green-400 to-green-600 items-center justify-center shadow-lg shadow-green-500/20 text-white font-black italic">AI</div>
+                  <div>
+                    <h2 className="text-3xl font-headline font-black tracking-tighter">AI Precision Report</h2>
+                    <p className="text-sm font-bold text-muted-foreground uppercase tracking-widest">Model: Gemini Pro-Vision ATS v3.4</p>
+                  </div>
                 </div>
-                <div className="flex gap-3">
-                  <Button variant="outline" size="sm" onClick={resetAnalysis} className="rounded-full font-bold px-6 border-slate-200">New Scan</Button>
-                  <Button size="sm" className="rounded-full px-8 font-bold shadow-lg shadow-primary/20">Optimize Resume</Button>
+                <div className="flex gap-4">
+                  <Button variant="outline" size="lg" onClick={resetAnalysis} className="rounded-2xl font-black px-8 border-slate-200 h-14 hover:bg-slate-50">NEW ANALYSIS</Button>
+                  <Button size="lg" className="rounded-2xl px-10 font-black shadow-2xl shadow-primary/30 h-14 bg-primary hover:bg-primary/90 text-white">UPGRADE REPORT</Button>
                 </div>
               </div>
 
-              <div className="flex-1 overflow-y-auto p-8 space-y-10 max-w-6xl mx-auto w-full">
+              <div className="p-10 space-y-12 max-w-7xl mx-auto w-full">
                 {/* Hero Score Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
-                  <Card className="md:col-span-5 shadow-2xl shadow-slate-100 border-slate-100 rounded-[2.5rem] bg-white">
-                    <CardContent className="flex flex-col items-center justify-center py-12">
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-10">
+                  <Card className="lg:col-span-5 shadow-2xl shadow-primary/5 border-white rounded-[3.5rem] bg-white overflow-hidden card-vibrant">
+                    <CardContent className="flex flex-col items-center justify-center py-16 relative">
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-72 h-72 bg-primary/5 rounded-full blur-[80px] -z-10"></div>
                       <ScoreGauge score={finalScore} />
-                      <div className="mt-8 text-center space-y-1">
-                        <p className="text-xs font-black text-slate-400 uppercase tracking-[0.2em]">Overall Match Score</p>
-                        <p className="text-sm text-slate-500 font-medium">Verified by Semantic AI analysis</p>
+                      <div className="mt-12 text-center space-y-3">
+                        <Badge className="bg-primary/10 text-primary border-none px-4 py-1.5 font-black rounded-full text-[10px] tracking-[0.2em] uppercase">Verified AI Score</Badge>
+                        <p className="text-base text-slate-500 font-bold max-w-xs">Your resume is {finalScore}% compatible with the target role requirements.</p>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="md:col-span-7 shadow-2xl shadow-slate-100 border-none rounded-[2.5rem] bg-gradient-to-br from-slate-50 to-white overflow-hidden flex flex-col justify-center border border-slate-100">
-                    <CardHeader className="pb-2">
-                      <CardTitle className="text-2xl font-headline font-bold flex items-center gap-3">
-                        <TrendingUp className="h-7 w-7 text-primary" />
-                        Executive Summary
+                  <Card className="lg:col-span-7 shadow-2xl shadow-primary/5 border-none rounded-[3.5rem] bg-gradient-to-br from-slate-50 to-white overflow-hidden flex flex-col justify-center border border-white card-vibrant">
+                    <CardHeader className="pb-4 px-10 pt-10">
+                      <CardTitle className="text-3xl font-headline font-black flex items-center gap-4">
+                        <div className="p-3 bg-primary/10 rounded-2xl">
+                          <TrendingUp className="h-8 w-8 text-primary" />
+                        </div>
+                        Strategic Summary
                       </CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-6">
+                    <CardContent className="space-y-8 px-10 pb-10">
                       {analysisResults.aiAnalysis ? (
                         <>
-                          <p className="text-lg text-slate-700 leading-relaxed font-medium">
+                          <p className="text-xl text-slate-700 leading-relaxed font-bold tracking-tight">
                             {analysisResults.aiAnalysis.summary}
                           </p>
-                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="p-5 bg-green-50/50 rounded-3xl border border-green-100 shadow-sm">
-                              <span className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-2 block">Competitive Edge</span>
-                              <p className="text-sm font-bold text-slate-800">
-                                {analysisResults.aiAnalysis.strengths[0] || "Exceptional technical depth found."}
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                            <div className="p-8 bg-green-50/70 rounded-[2.5rem] border border-green-100 shadow-sm transition-all hover:bg-green-100/50">
+                              <span className="text-[10px] font-black text-green-600 uppercase tracking-widest mb-3 block">Primary Strength</span>
+                              <p className="text-base font-black text-slate-800 leading-tight">
+                                {analysisResults.aiAnalysis.strengths[0] || "Highly relevant technical experience."}
                               </p>
                             </div>
-                            <div className="p-5 bg-red-50/50 rounded-3xl border border-red-100 shadow-sm">
-                              <span className="text-[10px] font-black text-red-600 uppercase tracking-widest mb-2 block">Critical Friction</span>
-                              <p className="text-sm font-bold text-slate-800">
-                                {analysisResults.aiAnalysis.weaknesses[0] || "Formatting optimization required."}
+                            <div className="p-8 bg-pink-50/70 rounded-[2.5rem] border border-pink-100 shadow-sm transition-all hover:bg-pink-100/50">
+                              <span className="text-[10px] font-black text-accent uppercase tracking-widest mb-3 block">Optimization Gap</span>
+                              <p className="text-base font-black text-slate-800 leading-tight">
+                                {analysisResults.aiAnalysis.weaknesses[0] || "Formatting could be improved for ATS."}
                               </p>
                             </div>
                           </div>
                         </>
                       ) : (
-                        <div className="space-y-4 animate-pulse">
-                          <div className="h-4 w-full bg-slate-200 rounded-full"></div>
-                          <div className="h-4 w-3/4 bg-slate-200 rounded-full"></div>
-                          <div className="grid grid-cols-2 gap-4 pt-4">
-                            <div className="h-24 bg-slate-100 rounded-[2rem]"></div>
-                            <div className="h-24 bg-slate-100 rounded-[2rem]"></div>
+                        <div className="space-y-6 animate-pulse">
+                          <div className="h-6 w-full bg-slate-200 rounded-full"></div>
+                          <div className="h-6 w-3/4 bg-slate-200 rounded-full"></div>
+                          <div className="grid grid-cols-2 gap-6 pt-6">
+                            <div className="h-32 bg-slate-100 rounded-[2.5rem]"></div>
+                            <div className="h-32 bg-slate-100 rounded-[2.5rem]"></div>
                           </div>
                         </div>
                       )}
@@ -378,56 +425,56 @@ export default function ResumeRefinePage() {
 
                 {/* Insight Tabs */}
                 <Tabs defaultValue="strategy" className="w-full">
-                  <TabsList className="grid w-full grid-cols-3 bg-slate-100/50 p-1.5 rounded-[2rem] h-16 border border-slate-200/60 max-w-2xl mx-auto">
-                    <TabsTrigger value="strategy" className="rounded-[1.5rem] font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary transition-all">Strategy</TabsTrigger>
-                    <TabsTrigger value="skills" className="rounded-[1.5rem] font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary transition-all">Skills & Gaps</TabsTrigger>
-                    <TabsTrigger value="keywords" className="rounded-[1.5rem] font-bold text-sm data-[state=active]:bg-white data-[state=active]:shadow-lg data-[state=active]:text-primary transition-all">Keywords</TabsTrigger>
+                  <TabsList className="grid w-full grid-cols-3 bg-white/50 backdrop-blur p-2 rounded-[2.5rem] h-20 border border-white shadow-xl shadow-slate-200/50 max-w-2xl mx-auto">
+                    <TabsTrigger value="strategy" className="rounded-[1.8rem] font-black text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-2xl transition-all">STRATEGY</TabsTrigger>
+                    <TabsTrigger value="skills" className="rounded-[1.8rem] font-black text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-2xl transition-all">SKILLS MAP</TabsTrigger>
+                    <TabsTrigger value="keywords" className="rounded-[1.8rem] font-black text-sm data-[state=active]:bg-gradient-to-r data-[state=active]:from-primary data-[state=active]:to-purple-600 data-[state=active]:text-white data-[state=active]:shadow-2xl transition-all">TOKEN ANALYSIS</TabsTrigger>
                   </TabsList>
 
-                  <TabsContent value="strategy" className="mt-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                      <Card className="rounded-[2.5rem] border-slate-100 shadow-xl overflow-hidden">
-                        <CardHeader className="bg-slate-50/50 border-b">
-                          <CardTitle className="text-xl font-headline font-bold flex items-center gap-3">
-                            <Zap className="h-6 w-6 text-accent" />
-                            Action Plan
+                  <TabsContent value="strategy" className="mt-12 animate-in fade-in slide-in-from-bottom-8 duration-700">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-10">
+                      <Card className="rounded-[3rem] border-white shadow-2xl bg-white overflow-hidden">
+                        <CardHeader className="bg-slate-50/50 border-b p-8">
+                          <CardTitle className="text-2xl font-headline font-black flex items-center gap-4 text-accent">
+                            <Zap className="h-7 w-7" />
+                            Optimization Plan
                           </CardTitle>
                         </CardHeader>
-                        <CardContent className="pt-8">
-                          <div className="space-y-5">
+                        <CardContent className="p-10">
+                          <div className="space-y-8">
                             {analysisResults.aiAnalysis?.actionPlan.map((step, i) => (
-                              <div key={i} className="flex items-start gap-5 group">
-                                <div className="h-8 w-8 rounded-2xl bg-accent/10 flex items-center justify-center text-accent text-sm font-black shrink-0 group-hover:bg-accent group-hover:text-white transition-all">
+                              <div key={i} className="flex items-start gap-6 group">
+                                <div className="h-10 w-10 rounded-2xl bg-accent/10 flex items-center justify-center text-accent text-sm font-black shrink-0 group-hover:bg-accent group-hover:text-white transition-all duration-300 shadow-sm">
                                   {i + 1}
                                 </div>
-                                <p className="text-base text-slate-700 leading-tight pt-1 font-medium">{step}</p>
+                                <p className="text-lg text-slate-700 leading-tight pt-1.5 font-bold tracking-tight">{step}</p>
                               </div>
                             ))}
                           </div>
                         </CardContent>
                       </Card>
 
-                      <Card className="rounded-[2.5rem] border-slate-100 shadow-xl overflow-hidden">
-                        <CardHeader className="bg-slate-50/50 border-b">
-                          <CardTitle className="text-xl font-headline font-bold flex items-center gap-3">
-                            <FileText className="h-6 w-6 text-primary" />
-                            ATS Readability
+                      <Card className="rounded-[3rem] border-white shadow-2xl bg-white overflow-hidden">
+                        <CardHeader className="bg-slate-50/50 border-b p-8">
+                          <CardTitle className="text-2xl font-headline font-black flex items-center gap-4 text-primary">
+                            <FileText className="h-7 w-7" />
+                            Format Integrity
                           </CardTitle>
                         </CardHeader>
-                        <CardContent className="pt-8 space-y-8">
-                          <div className="bg-slate-50 p-6 rounded-3xl border border-slate-200/60">
-                            <p className="text-base text-slate-600 leading-relaxed italic font-medium">
+                        <CardContent className="p-10 space-y-10">
+                          <div className="bg-gradient-to-br from-slate-50 to-white p-8 rounded-[2.5rem] border border-slate-100 shadow-inner">
+                            <p className="text-lg text-slate-600 leading-relaxed italic font-bold">
                               "{analysisResults.aiAnalysis?.formattingFeedback || "Analyzing document architecture..."}"
                             </p>
                           </div>
-                          <div className="grid grid-cols-2 gap-4">
-                            <div className="p-6 rounded-3xl border border-slate-100 bg-white flex flex-col items-center text-center shadow-sm">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Density</span>
-                              <span className="text-3xl font-black text-primary">{analysisResults.nlp.score}%</span>
+                          <div className="grid grid-cols-2 gap-6">
+                            <div className="p-8 rounded-[2.5rem] border border-slate-100 bg-white flex flex-col items-center text-center shadow-lg shadow-slate-100">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Token Density</span>
+                              <span className="text-4xl font-black text-primary">{analysisResults.nlp.score}%</span>
                             </div>
-                            <div className="p-6 rounded-3xl border border-slate-100 bg-white flex flex-col items-center text-center shadow-sm">
-                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Status</span>
-                              <span className="text-3xl font-black text-primary">PASSED</span>
+                            <div className="p-8 rounded-[2.5rem] border border-slate-100 bg-white flex flex-col items-center text-center shadow-lg shadow-slate-100">
+                              <span className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Structure</span>
+                              <span className="text-3xl font-black text-green-500">HEALTHY</span>
                             </div>
                           </div>
                         </CardContent>
@@ -435,62 +482,64 @@ export default function ResumeRefinePage() {
                     </div>
                   </TabsContent>
 
-                  <TabsContent value="skills" className="mt-10">
-                    <Card className="rounded-[2.5rem] border-slate-100 shadow-xl overflow-hidden">
-                      <CardHeader className="bg-slate-50/50 border-b">
-                        <CardTitle className="text-xl font-headline font-bold">Semantic Gap Analysis</CardTitle>
-                        <CardDescription className="text-sm font-medium">Core competencies identified as missing or weak by the AI engine.</CardDescription>
+                  <TabsContent value="skills" className="mt-12">
+                    <Card className="rounded-[3.5rem] border-white shadow-2xl bg-white overflow-hidden">
+                      <CardHeader className="bg-slate-50/50 border-b p-10">
+                        <CardTitle className="text-2xl font-headline font-black">Semantic Gap Analysis</CardTitle>
+                        <CardDescription className="text-base font-bold text-slate-500">Neural identification of missing high-impact competencies.</CardDescription>
                       </CardHeader>
-                      <CardContent className="pt-8">
+                      <CardContent className="p-10">
                         {analysisResults.aiGaps ? (
-                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {analysisResults.aiGaps.skillGaps.map((gap, i) => (
-                              <div key={i} className="p-6 bg-slate-50/80 border border-slate-200/60 rounded-[2rem] flex items-center gap-4 hover:border-primary/40 transition-all hover:bg-white hover:shadow-lg group">
-                                <div className="bg-white p-3 rounded-2xl shadow-sm group-hover:bg-primary/5 transition-colors">
-                                  <Target className="h-5 w-5 text-primary" />
+                              <div key={i} className="p-8 bg-slate-50/50 border border-slate-100 rounded-[2.5rem] flex items-center gap-6 hover:border-primary/40 transition-all hover:bg-white hover:shadow-2xl hover:-translate-y-1 group">
+                                <div className="bg-white p-4 rounded-2xl shadow-lg group-hover:bg-primary/5 transition-colors border border-slate-100">
+                                  <Target className="h-6 w-6 text-primary" />
                                 </div>
-                                <p className="text-base font-bold text-slate-700 leading-tight">{gap}</p>
+                                <p className="text-lg font-black text-slate-700 leading-tight">{gap}</p>
                               </div>
                             ))}
                           </div>
                         ) : (
-                          <div className="py-20 flex flex-col items-center justify-center space-y-4">
-                            <RefreshCcw className="h-10 w-10 text-primary animate-spin" />
-                            <p className="text-lg text-slate-500 font-bold italic">Building semantic skill map...</p>
+                          <div className="py-24 flex flex-col items-center justify-center space-y-6">
+                            <RefreshCcw className="h-12 w-12 text-primary animate-spin" />
+                            <p className="text-xl text-slate-500 font-black italic">Mapping neural skill patterns...</p>
                           </div>
                         )}
                       </CardContent>
                     </Card>
                   </TabsContent>
 
-                  <TabsContent value="keywords" className="mt-10">
-                    <Card className="rounded-[2.5rem] border-slate-100 shadow-xl overflow-hidden">
-                      <CardHeader className="bg-slate-50/50 border-b">
-                        <CardTitle className="text-xl font-headline font-bold">Keyword Intelligence</CardTitle>
-                        <CardDescription className="font-medium">Direct comparison of tokens extracted from your resume vs job requirements.</CardDescription>
+                  <TabsContent value="keywords" className="mt-12">
+                    <Card className="rounded-[3.5rem] border-white shadow-2xl bg-white overflow-hidden">
+                      <CardHeader className="bg-slate-50/50 border-b p-10">
+                        <CardTitle className="text-2xl font-headline font-black">Token Intelligence</CardTitle>
+                        <CardDescription className="text-base font-bold text-slate-500">Direct comparison of extracted linguistic tokens vs requirements.</CardDescription>
                       </CardHeader>
-                      <CardContent className="pt-8">
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                          <div className="space-y-6">
-                            <h4 className="text-xs font-black text-green-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                              <CheckCircle className="h-5 w-5" /> Optimized Terms
+                      <CardContent className="p-10">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-16">
+                          <div className="space-y-8">
+                            <h4 className="text-xs font-black text-green-600 uppercase tracking-[0.3em] flex items-center gap-4">
+                              <div className="p-2 bg-green-50 rounded-lg"><CheckCircle className="h-6 w-6" /></div>
+                              Aligned Tokens
                             </h4>
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-wrap gap-4">
                               {analysisResults.nlp.matched.map(kw => (
                                 <KeywordBadge key={kw} keyword={kw} matched={true} />
                               ))}
-                              {analysisResults.nlp.matched.length === 0 && <span className="text-sm text-muted-foreground italic">No direct matches found.</span>}
+                              {analysisResults.nlp.matched.length === 0 && <span className="text-lg text-muted-foreground font-bold italic">No direct matches identified.</span>}
                             </div>
                           </div>
-                          <div className="space-y-6">
-                            <h4 className="text-xs font-black text-red-600 uppercase tracking-[0.2em] flex items-center gap-3">
-                              <AlertCircle className="h-5 w-5" /> Missing High-Impact Tokens
+                          <div className="space-y-8">
+                            <h4 className="text-xs font-black text-accent uppercase tracking-[0.3em] flex items-center gap-4">
+                              <div className="p-2 bg-pink-50 rounded-lg"><AlertCircle className="h-6 w-6" /></div>
+                              Missing Critical Tokens
                             </h4>
-                            <div className="flex flex-wrap gap-3">
+                            <div className="flex flex-wrap gap-4">
                               {analysisResults.nlp.missing.map(kw => (
                                 <KeywordBadge key={kw} keyword={kw} matched={false} />
                               ))}
-                              {analysisResults.nlp.missing.length === 0 && <span className="text-sm text-muted-foreground italic">Your keyword profile is exceptional!</span>}
+                              {analysisResults.nlp.missing.length === 0 && <span className="text-lg text-muted-foreground font-bold italic">Linguistic profile fully aligned!</span>}
                             </div>
                           </div>
                         </div>
@@ -504,17 +553,21 @@ export default function ResumeRefinePage() {
         )}
       </main>
 
-      <footer className="bg-white border-t py-8">
-        <div className="container mx-auto px-4 flex flex-col md:flex-row items-center justify-between gap-6">
-          <div className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-primary" />
-            <p className="text-xs font-bold text-slate-500 uppercase tracking-widest">Powered by ResumeRefine Semantic Engine v2.4</p>
+      <footer className="glass-morphism border-t py-12 mt-auto">
+        <div className="container mx-auto px-10 flex flex-col md:flex-row items-center justify-between gap-10">
+          <div className="flex flex-col items-center md:items-start gap-4">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-5 w-5 text-primary" />
+              <h1 className="text-xl font-headline font-black text-primary tracking-tighter">ResumeRefine</h1>
+            </div>
+            <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.3em]">AI-Powered Career Intelligence Engine v3.4.1</p>
           </div>
-          <div className="flex items-center gap-8">
-            <a href="#" className="text-xs font-bold text-slate-400 hover:text-primary transition-colors">Privacy</a>
-            <a href="#" className="text-xs font-bold text-slate-400 hover:text-primary transition-colors">Safety</a>
-            <a href="#" className="text-xs font-bold text-slate-400 hover:text-primary transition-colors">Docs</a>
+          <div className="flex items-center gap-12">
+            <a href="#" className="text-xs font-black text-slate-500 hover:text-primary transition-colors tracking-widest uppercase">Privacy</a>
+            <a href="#" className="text-xs font-black text-slate-500 hover:text-primary transition-colors tracking-widest uppercase">Security</a>
+            <a href="#" className="text-xs font-black text-slate-500 hover:text-primary transition-colors tracking-widest uppercase">API Docs</a>
           </div>
+          <p className="text-xs font-bold text-slate-400">© 2024 ResumeRefine AI. All rights reserved.</p>
         </div>
       </footer>
     </div>
